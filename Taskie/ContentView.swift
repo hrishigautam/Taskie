@@ -5,84 +5,108 @@
 //  Created by Hrishi Gautam on 06/10/24.
 //
 
+
+
 import SwiftUI
-import CoreData
 
 struct ContentView: View {
-    @Environment(\.managedObjectContext) private var viewContext
-
-    @FetchRequest(
-        sortDescriptors: [NSSortDescriptor(keyPath: \Item.timestamp, ascending: true)],
-        animation: .default)
-    private var items: FetchedResults<Item>
+    @StateObject var taskManager = TaskieManager()
 
     var body: some View {
         NavigationView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp!, formatter: itemFormatter)")
-                    } label: {
-                        Text(item.timestamp!, formatter: itemFormatter)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    TaskSection(title: "PENDING TASKS", color: .red, tasks: taskManager.pendingTasks)
+                    TaskSection(title: "CURRENT TASKS", color: .gray, tasks: taskManager.todaysTasks)
+                    
+                    if taskManager.pendingTasks.isEmpty && taskManager.todaysTasks.isEmpty {
+                        Text("No tasks yet. Add a new task to get started!")
+                            .foregroundColor(.gray)
+                            .padding()
                     }
                 }
-                .onDelete(perform: deleteItems)
             }
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-#if os(iOS)
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Text("HrG's Taskie")
+                        .font(.headline)
                 }
-#endif
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    HStack {
+                        Button(action: {
+                            taskManager.showingAddTask = true
+                        }) {
+                            Image(systemName: "plus")
+                                .foregroundColor(.blue)
+                        }
+                        
+                        NavigationLink(destination: HistoryView(taskManager: taskManager)) {
+                            Text("History")
+                                .foregroundColor(.blue)
+                        }
                     }
                 }
             }
-            Text("Select an item")
-        }
-    }
-
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(context: viewContext)
-            newItem.timestamp = Date()
-
-            do {
-                try viewContext.save()
-            } catch {
-                // Replace this implementation with code to handle the error appropriately.
-                // fatalError() causes the application to generate a crash log and terminate. You should not use this function in a shipping application, although it may be useful during development.
-                let nsError = error as NSError
-                fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
+            .sheet(isPresented: $taskManager.showingAddTask) {
+                AddTaskView(taskManager: taskManager)
             }
         }
+        .environmentObject(taskManager)
     }
+}
 
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            offsets.map { items[$0] }.forEach(viewContext.delete)
-
-            do {
-                try viewContext.save()
-            } catch {
-                // Replace this implementation with code to handle the error appropriately.
-                // fatalError() causes the application to generate a crash log and terminate. You should not use this function in a shipping application, although it may be useful during development.
-                let nsError = error as NSError
-                fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
+struct TaskSection: View {
+    let title: String
+    let color: Color
+    let tasks: [Task]
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(title)
+                .font(.headline)
+                .foregroundColor(color)
+                .padding(.top, 20)
+                .padding(.leading, 20)
+            
+            if tasks.isEmpty {
+                Text("No tasks")
+                    .foregroundColor(.gray)
+                    .padding()
+            } else {
+                ForEach(tasks) { task in
+                    TaskRowView(task: task)
+                        .padding(.horizontal)
+                }
             }
         }
     }
 }
 
-private let itemFormatter: DateFormatter = {
-    let formatter = DateFormatter()
-    formatter.dateStyle = .short
-    formatter.timeStyle = .medium
-    return formatter
-}()
+struct TaskRowView: View {
+    @ObservedObject var task: Task
+    @EnvironmentObject var taskManager: TaskieManager
 
-#Preview {
-    ContentView().environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
+    var body: some View {
+        HStack {
+            Button(action: {
+                taskManager.completeTask(task)
+            }) {
+                Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
+                    .foregroundColor(task.isCompleted ? .green : .blue)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(task.title)
+                    .font(.body)
+                Text("Deadline: \(task.deadlineTimeString)")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+            }
+            Spacer()
+            Text(task.remainingTimeString)
+                .font(.caption)
+                .foregroundColor(task.isOverdue ? .red : .orange)
+        }
+        .padding(.vertical, 8)
+    }
 }
